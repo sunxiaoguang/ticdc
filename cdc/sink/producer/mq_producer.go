@@ -15,7 +15,21 @@ package producer
 
 import (
 	"context"
+
+	"github.com/pingcap/ticdc/cdc/model"
 )
+
+// EventContext is a interface to access meta data about the event
+type EventContext interface {
+	GetTs() uint64
+	GetSchema() *string
+	GetTable() *string
+	GetType() model.MqMessageType
+}
+
+type eventContextKey string
+
+const EventContextKey = eventContextKey("event")
 
 // Producer is a interface of mq producer
 type Producer interface {

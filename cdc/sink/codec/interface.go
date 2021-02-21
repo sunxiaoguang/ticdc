@@ -52,9 +52,32 @@ type EventBatchEncoder interface {
 
 // MQMessage represents an MQ message to the mqSink
 type MQMessage struct {
-	Key   []byte
-	Value []byte
-	Ts    uint64 // reserved for possible output sorting
+	Key    []byte
+	Value  []byte
+	Ts     uint64              // reserved for possible output sorting
+	Schema *string             // schema
+	Table  *string             // table
+	Type   model.MqMessageType // type
+}
+
+// GetTs returns the commit ts of the message
+func (m *MQMessage) GetTs() uint64 {
+	return m.Ts
+}
+
+// GetSchema returns the optional schema of the message
+func (m *MQMessage) GetSchema() *string {
+	return m.Schema
+}
+
+// GetTable returns the optional table of the message
+func (m *MQMessage) GetTable() *string {
+	return m.Table
+}
+
+// GetType returns the optional event type of the message
+func (m *MQMessage) GetType() model.MqMessageType {
+	return m.Type
 }
 
 // Length returns the expected size of the Kafka message
@@ -64,11 +87,14 @@ func (m *MQMessage) Length() int {
 
 // NewMQMessage should be used when creating a MQMessage struct.
 // It copies the input byte slices to avoid any surprises in asynchronous MQ writes.
-func NewMQMessage(key []byte, value []byte, ts uint64) *MQMessage {
+func NewMQMessage(key []byte, value []byte, ts uint64, ty model.MqMessageType, schema, table *string) *MQMessage {
 	ret := &MQMessage{
-		Key:   nil,
-		Value: nil,
-		Ts:    ts,
+		Key:    nil,
+		Value:  nil,
+		Ts:     ts,
+		Schema: schema,
+		Table:  table,
+		Type:   ty,
 	}
 
 	if key != nil {

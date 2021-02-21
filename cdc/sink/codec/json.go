@@ -363,7 +363,7 @@ func (d *JSONEventBatchEncoder) EncodeCheckpointEvent(ts uint64) (*MQMessage, er
 	valueBuf := new(bytes.Buffer)
 	valueBuf.Write(valueLenByte[:])
 
-	ret := NewMQMessage(keyBuf.Bytes(), valueBuf.Bytes(), ts)
+	ret := NewMQMessage(keyBuf.Bytes(), valueBuf.Bytes(), ts, model.MqMessageTypeResolved, nil, nil)
 	return ret, nil
 }
 
@@ -398,7 +398,7 @@ func (d *JSONEventBatchEncoder) AppendRowChangedEvent(e *model.RowChangedEvent) 
 			versionHead := make([]byte, 8)
 			binary.BigEndian.PutUint64(versionHead, BatchVersion1)
 
-			d.messageBuf = append(d.messageBuf, NewMQMessage(versionHead, nil, 0))
+			d.messageBuf = append(d.messageBuf, NewMQMessage(versionHead, nil, 0, model.MqMessageTypeUnknow, nil, nil))
 			d.curBatchSize = 0
 		}
 
@@ -407,6 +407,10 @@ func (d *JSONEventBatchEncoder) AppendRowChangedEvent(e *model.RowChangedEvent) 
 		message.Key = append(message.Key, key...)
 		message.Value = append(message.Value, valueLenByte[:]...)
 		message.Value = append(message.Value, value...)
+		message.Ts = e.CommitTs
+		message.Type = model.MqMessageTypeRow
+		message.Schema = &e.Table.Schema
+		message.Table = &e.Table.Table
 
 		if message.Length() > d.maxKafkaMessageSize {
 			// `len(d.messageBuf) == 1` is implied
@@ -454,7 +458,7 @@ func (d *JSONEventBatchEncoder) EncodeDDLEvent(e *model.DDLEvent) (*MQMessage, e
 	valueBuf.Write(valueLenByte[:])
 	valueBuf.Write(value)
 
-	ret := NewMQMessage(keyBuf.Bytes(), valueBuf.Bytes(), e.CommitTs)
+	ret := NewMQMessage(keyBuf.Bytes(), valueBuf.Bytes(), e.CommitTs, model.MqMessageTypeDDL, &e.TableInfo.Schema, &e.TableInfo.Table)
 	return ret, nil
 }
 
@@ -464,7 +468,7 @@ func (d *JSONEventBatchEncoder) Build() (mqMessages []*MQMessage) {
 		if d.valueBuf.Len() == 0 {
 			return nil
 		}
-		ret := NewMQMessage(d.keyBuf.Bytes(), d.valueBuf.Bytes(), 0)
+		ret := NewMQMessage(d.keyBuf.Bytes(), d.valueBuf.Bytes(), 0, model.MqMessageTypeRow, nil, nil)
 		return []*MQMessage{ret}
 	}
 

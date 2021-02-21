@@ -222,6 +222,10 @@ flushLoop:
 	return k.checkpointTs, nil
 }
 
+func withEventContext(ctx context.Context, msg *codec.MQMessage) context.Context {
+	return context.WithValue(ctx, producer.EventContextKey, msg)
+}
+
 func (k *mqSink) EmitCheckpointTs(ctx context.Context, ts uint64) error {
 	encoder := k.newEncoder()
 	msg, err := encoder.EncodeCheckpointEvent(ts)
@@ -231,7 +235,7 @@ func (k *mqSink) EmitCheckpointTs(ctx context.Context, ts uint64) error {
 	if msg == nil {
 		return nil
 	}
-	err = k.writeToProducer(ctx, msg.Key, msg.Value, codec.EncoderNeedSyncWrite, -1)
+	err = k.writeToProducer(withEventContext(ctx, msg), msg.Key, msg.Value, codec.EncoderNeedSyncWrite, -1)
 	return errors.Trace(err)
 }
 
@@ -255,7 +259,7 @@ func (k *mqSink) EmitDDLEvent(ctx context.Context, ddl *model.DDLEvent) error {
 		return nil
 	}
 	log.Debug("emit ddl event", zap.String("query", ddl.Query), zap.Uint64("commit-ts", ddl.CommitTs))
-	err = k.writeToProducer(ctx, msg.Key, msg.Value, codec.EncoderNeedSyncWrite, -1)
+	err = k.writeToProducer(withEventContext(ctx, msg), msg.Key, msg.Value, codec.EncoderNeedSyncWrite, -1)
 	return errors.Trace(err)
 }
 
@@ -299,7 +303,7 @@ func (k *mqSink) runWorker(ctx context.Context, partition int32) error {
 			}
 
 			for _, msg := range messages {
-				err := k.writeToProducer(ctx, msg.Key, msg.Value, codec.EncoderNeedAsyncWrite, partition)
+				err := k.writeToProducer(withEventContext(ctx, msg), msg.Key, msg.Value, codec.EncoderNeedAsyncWrite, partition)
 				if err != nil {
 					return 0, err
 				}

@@ -21,6 +21,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
+	"github.com/pingcap/ticdc/cdc/sink/producer"
 	cerror "github.com/pingcap/ticdc/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -70,12 +71,46 @@ type Producer struct {
 	partitions int
 }
 
+func propertiesFromEventContext(ctx producer.EventContext, partition int32) map[string]string {
+	properties := map[string]string{route: strconv.Itoa(int(partition))}
+	properties["Ts"] = strconv.FormatUint(ctx.GetTs(), 10)
+	properties["Type"] = strconv.Itoa(int(ctx.GetType()))
+	if schema := ctx.GetSchema(); schema != nil {
+		properties["Schema"] = *schema
+	}
+	if table := ctx.GetSchema(); table != nil {
+		properties["Table"] = *table
+	}
+	return properties
+}
+
+func getEventContext(ctx context.Context) producer.EventContext {
+	eventCtx := ctx.Value(producer.EventContextKey)
+	if eventCtx != nil {
+		if ectx, ok := eventCtx.(producer.EventContext); ok {
+			return ectx
+		}
+	}
+	return nil
+}
+
+func propertiesForPartition(partition int32) map[string]string {
+	return map[string]string{route: strconv.Itoa(int(partition))}
+}
+
+func propertiesFromContext(ctx context.Context, partition int32) map[string]string {
+	if eventCtx := getEventContext(ctx); eventCtx != nil {
+		return propertiesFromEventContext(eventCtx, partition)
+	}
+	return propertiesForPartition(partition)
+}
+
 // SendMessage send key-value msg to target partition.
 func (p *Producer) SendMessage(ctx context.Context, key []byte, value []byte, partition int32) error {
 	p.producer.SendAsync(ctx, &pulsar.ProducerMessage{
 		Payload:    value,
 		Key:        string(key),
-		Properties: map[string]string{route: strconv.Itoa(int(partition))},
+		Properties: propertiesFromContext(ctx, partition),
 	}, p.errors)
 	return nil
 }
@@ -92,11 +127,19 @@ func (p *Producer) errors(_ pulsar.MessageID, _ *pulsar.ProducerMessage, err err
 
 // SyncBroadcastMessage send key-value msg to all partition.
 func (p *Producer) SyncBroadcastMessage(ctx context.Context, key []byte, value []byte) error {
+	eventCtx := getEventContext(ctx)
+	var properties map[string]string
 	for i := 0; i < p.partitions; i++ {
+		var partition = int32(i)
+		if eventCtx != nil {
+			properties = propertiesFromEventContext(eventCtx, partition)
+		} else {
+			properties = propertiesForPartition(partition)
+		}
 		_, err := p.producer.Send(ctx, &pulsar.ProducerMessage{
 			Payload:    value,
 			Key:        string(key),
-			Properties: map[string]string{route: strconv.Itoa(i)},
+			Properties: properties,
 		})
 		if err != nil {
 			return cerror.WrapError(cerror.ErrPulsarSendMessage, p.producer.Flush())

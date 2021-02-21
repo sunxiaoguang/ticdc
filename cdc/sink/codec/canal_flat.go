@@ -206,7 +206,7 @@ func (c *CanalFlatEventBatchEncoder) EncodeDDLEvent(e *model.DDLEvent) (*MQMessa
 	if err != nil {
 		return nil, cerrors.WrapError(cerrors.ErrCanalEncodeFailed, err)
 	}
-	return NewMQMessage(nil, value, e.CommitTs), nil
+	return NewMQMessage(nil, value, e.CommitTs, model.MqMessageTypeDDL, &e.TableInfo.Schema, &e.TableInfo.Table), nil
 }
 
 // Build implements the EventBatchEncoder interface
@@ -221,7 +221,7 @@ func (c *CanalFlatEventBatchEncoder) Build() []*MQMessage {
 			log.Panic("CanalFlatEventBatchEncoder", zap.Error(err))
 			return nil
 		}
-		ret[i] = NewMQMessage(nil, value, c.resolvedBuf[i].tikvTs)
+		ret[i] = NewMQMessage(nil, value, c.resolvedBuf[i].tikvTs, model.MqMessageTypeRow, nil, nil)
 	}
 	c.resolvedBuf = c.resolvedBuf[0:0]
 	return ret
