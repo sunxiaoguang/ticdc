@@ -43,6 +43,7 @@ type Config struct {
 	MaxMessageBytes int
 	Compression     string
 	ClientID        string
+	Packed          bool
 	Credential      *security.Credential
 	// TODO support SASL authentication
 
@@ -57,6 +58,7 @@ func NewKafkaConfig() Config {
 		MaxMessageBytes:   512 * 1024 * 1024, // 512M
 		ReplicationFactor: 1,
 		Compression:       "none",
+		Packed:            true,
 		Credential:        &security.Credential{},
 		TopicPreProcess:   true,
 	}
@@ -83,15 +85,18 @@ type kafkaSaramaProducer struct {
 
 	closeCh chan struct{}
 	closed  int32
+
+	packed bool
 }
 
 func (k *kafkaSaramaProducer) SendMessage(ctx context.Context, message *codec.MQMessage, partition int32) error {
+	key, value := message.KeyValue(k.packed)
 	k.clientLock.RLock()
 	defer k.clientLock.RUnlock()
 	msg := &sarama.ProducerMessage{
 		Topic:     k.topic,
-		Key:       sarama.ByteEncoder(message.Key),
-		Value:     sarama.ByteEncoder(message.Value),
+		Key:       sarama.ByteEncoder(key),
+		Value:     sarama.ByteEncoder(value),
 		Partition: partition,
 	}
 	msg.Metadata = atomic.AddUint64(&k.partitionOffset[partition].sent, 1)
@@ -121,14 +126,15 @@ func (k *kafkaSaramaProducer) SendMessage(ctx context.Context, message *codec.MQ
 }
 
 func (k *kafkaSaramaProducer) SyncBroadcastMessage(ctx context.Context, message *codec.MQMessage) error {
+	key, value := message.KeyValue(k.packed)
 	k.clientLock.RLock()
 	defer k.clientLock.RUnlock()
 	msgs := make([]*sarama.ProducerMessage, k.partitionNum)
 	for i := 0; i < int(k.partitionNum); i++ {
 		msgs[i] = &sarama.ProducerMessage{
 			Topic:     k.topic,
-			Key:       sarama.ByteEncoder(message.Key),
-			Value:     sarama.ByteEncoder(message.Value),
+			Key:       sarama.ByteEncoder(key),
+			Value:     sarama.ByteEncoder(value),
 			Partition: int32(i),
 		}
 	}
@@ -360,6 +366,7 @@ func NewKafkaSaramaProducer(ctx context.Context, address string, topic string, c
 		flushedReceiver: flushedReceiver,
 		closeCh:         make(chan struct{}),
 		failpointCh:     make(chan error, 1),
+		packed:          config.Packed,
 	}
 	go func() {
 		if err := k.run(ctx); err != nil && errors.Cause(err) != context.Canceled {

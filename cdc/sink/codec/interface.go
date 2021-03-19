@@ -14,6 +14,7 @@
 package codec
 
 import (
+	"encoding/binary"
 	"strings"
 	"time"
 
@@ -71,6 +72,26 @@ func (m *MQMessage) Length() int {
 // PhysicalTime returns physical time part of Ts in time.Time
 func (m *MQMessage) PhysicalTime() time.Time {
 	return oracle.GetTimeFromTS(m.Ts)
+}
+
+func (m *MQMessage) KeyValue(packed bool) ([]byte, []byte) {
+	if packed {
+		return nil, m.Packed()
+	} else {
+		return m.Key, m.Value
+	}
+}
+
+func (m *MQMessage) Packed() []byte {
+	packed := make([]byte, len(m.Key)+len(m.Value)+8)
+	binary.BigEndian.PutUint32(packed, uint32(len(m.Key)))
+	offset := 4
+	copy(packed[offset:], m.Key)
+	offset += len(m.Key)
+	binary.BigEndian.PutUint32(packed[offset:], uint32(len(m.Value)))
+	offset += 4
+	copy(packed[offset:], m.Value)
+	return packed
 }
 
 func newDDLMQMessage(proto Protocol, key, value []byte, event *model.DDLEvent) *MQMessage {

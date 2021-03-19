@@ -469,6 +469,15 @@ func newKafkaSaramaSink(ctx context.Context, sinkURI *url.URL, filter *filter.Fi
 		config.TopicPreProcess = autoCreate
 	}
 
+	s = sinkURI.Query().Get("packed")
+	if s != "" {
+		packed, err := strconv.ParseBool(s)
+		if err != nil {
+			return nil, cerror.WrapError(cerror.ErrKafkaInvalidConfig, err)
+		}
+		config.Packed = packed
+	}
+
 	topic := strings.TrimFunc(sinkURI.Path, func(r rune) bool {
 		return r == '/'
 	})
